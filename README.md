@@ -1,3 +1,57 @@
+# Debezium Server for NTR: Custom Implementation
+
+This fork contains custom logic to match NTR's specific requirements. Nothing too fancy or useful at large, but you're welcome to use it.
+
+Namely, the custom logic:
+
+* Only "INSERT" events should be published to Pub/Sub
+* The topic name should come from the configuration file (custom `topicName` configuration point)
+* Published messages should be in binary format and adhere to a Protobuf message described in `proto/event.proto`
+* Published messages should only contain the contents *payload*; not the schema and metadata from Debezium
+
+## Building
+
+The following instructions worked for me in a dev container.
+
+You first need to compile the core Debezium project (will take several minutes [~7 @ 8 CPU cores]):
+
+````bash
+cd /workspaces
+git clone https://github.com/debezium/debezium.git
+
+# cd debezium
+# mvn clean install -DskipITs -DskipTests
+````
+
+Then compile the Protobuf file:
+
+````bash
+cd /workspaces/debezium-server
+sudo apt install -y protobuf-compiler
+protoc -I=proto --java_out=debezium-server-pubsub/src/main/java proto/event.proto
+````
+
+You can then compile Debezium Server (~2 minutes):
+
+````bash
+cd /workspaces/debezium-server
+mvn clean install -DskipITs -DskipTests
+````
+
+To create a distribution:
+
+````bash
+mvn clean package -DskipITs -DskipTests -Passembly
+````
+
+Built packages can be found in `debezium-server-dist/target`.
+
+Want to run the project? I haven't been able to do that yet. I don't know anything about Maven and whatever "Quarkus" is.
+Good luck!
+Also, there is no Dockerfile here so I wouldn't even know how to build the Docker image.
+
+------
+
 # Debezium Server
 
 Debezium Server is a standalone Java application built on Quarkus framework.

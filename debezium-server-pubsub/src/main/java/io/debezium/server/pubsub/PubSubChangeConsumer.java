@@ -55,16 +55,19 @@ import io.debezium.server.BaseChangeConsumer;
 import io.debezium.server.CustomConsumerBuilder;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.ntr.NtrProtos;
 
 /**
- * Implementation of the consumer that delivers the messages into Google Pub/Sub destination.
+ * Implementation of the consumer that delivers the messages into Google Pub/Sub
+ * destination.
  *
  * @author Jiri Pechanec
  *
  */
 @Named("pubsub")
 @Dependent
-public class PubSubChangeConsumer extends BaseChangeConsumer implements DebeziumEngine.ChangeConsumer<ChangeEvent<Object, Object>> {
+public class PubSubChangeConsumer extends BaseChangeConsumer
+        implements DebeziumEngine.ChangeConsumer<ChangeEvent<Object, Object>> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PubSubChangeConsumer.class);
 
@@ -88,6 +91,9 @@ public class PubSubChangeConsumer extends BaseChangeConsumer implements Debezium
 
     @ConfigProperty(name = PROP_PREFIX + "null.key", defaultValue = "default")
     String nullKey;
+
+    @ConfigProperty(name = PROP_PREFIX + "topic", defaultValue = "default")
+    String topicName;
 
     @ConfigProperty(name = PROP_PREFIX + "batch.delay.threshold.ms", defaultValue = "100")
     Integer maxDelayThresholdMs;
@@ -230,13 +236,16 @@ public class PubSubChangeConsumer extends BaseChangeConsumer implements Debezium
 
         for (ChangeEvent<Object, Object> record : records) {
             LOGGER.trace("Received event '{}'", record);
-            final String topicName = streamNameMapper.map(record.destination());
+
+            // Use the `topicName` configuration property
+            final String topicName = this.topicName;
+
+            // @TODO Only process the event if it is an "INSERT" event
+            //
+
             Publisher publisher = publishers.computeIfAbsent(topicName, (x) -> publisherBuilder.get(ProjectTopicName.of(projectId, x)));
-
             PubsubMessage message = buildPubSubMessage(record);
-
             deliveries.add(publisher.publish(message));
-
             committer.markProcessed(record);
         }
         List<String> messageIds;
@@ -271,13 +280,25 @@ public class PubSubChangeConsumer extends BaseChangeConsumer implements Debezium
             }
         }
 
+        com.google.protobuf.ByteString data;
         if (record.value() instanceof String) {
-            pubsubMessage.setData(ByteString.copyFromUtf8((String) record.value()));
+            data = ByteString.copyFromUtf8((String) record.value());
         }
         else if (record.value() instanceof byte[]) {
-            pubsubMessage.setData(ByteString.copyFrom((byte[]) record.value()));
+            data = ByteString.copyFrom((byte[]) record.value());
+        }
+        else {
+            throw new DebeziumException();
         }
 
+        // Convert data into its encoded proto format
+        NtrProtos.Event encodedEvent = NtrProtos.Event.newBuilder()
+                .setEventName("todo")
+                .setInnerTypeName("todo")
+                // .setData("todo")
+                .build();
+
+        pubsubMessage.setData(data);
         pubsubMessage.putAllAttributes(convertHeaders(record));
 
         return pubsubMessage.build();
